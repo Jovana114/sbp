@@ -306,19 +306,9 @@ db.feedback.aggregate([
         eye_color: "$_id.eye_color"
       },
       max_count: { $first: "$count" },
-      brand_id: { $first: "$_id.brand_id" }
+      brand_id: { $first: "$_id.brand_id" },
+      brand: { $first: "$product.brand_name" }
     }
-  },
-  {
-    $lookup: {
-      from: "product_info",
-      localField: "brand_id",
-      foreignField: "brand_id",
-      as: "brand"
-    }
-  },
-  {
-    $unwind: "$brand"
   },
   {
     $project: {
@@ -326,9 +316,13 @@ db.feedback.aggregate([
       hair_color: "$_id.hair_color",
       skin_type: "$_id.skin_type",
       eye_color: "$_id.eye_color",
-      brand_id: "$brand.brand_id",
-      brand_name: "$brand.brand_name",
+      brand_id: 1,
       max_count: 1
+    }
+  },
+  {
+    $sort: {
+      max_count: -1
     }
   }
 ]);
@@ -391,11 +385,16 @@ db.feedback.aggregate([
       tertiaryCategory: "$_id",
       brands: 1
     }
+  },
+  {
+    $sort: {
+      tertiaryCategory: 1
+    }
   }
 ]);
 
-//za svaki produkt iz sve tri kategorije i svaki brend u okviru njih koji ima limited_edition naci profil svake osobe (kombinacija boje kože, tipa kože, boje očiju i boje kose) koji je ostavila najvise total_pos_feedback_count
 
+//za svaki produkt iz sve tri kategorije i svaki brend u okviru njih koji ima limited_edition naci profil svake osobe (kombinacija boje kože, tipa kože, boje očiju i boje kose) koji je ostavila najvise total_pos_feedback_count
 db.product_info.aggregate([
   {
     $match: {
@@ -471,11 +470,16 @@ db.product_info.aggregate([
         }
       }
     }
+  },
+  {
+    $sort: {
+      "products.product_id": 1
+    }
   }
 ]);
 
-//za svaki skin_tone i skin_type i svaki produkt iz tertiary_category = tertiary_category naci brandove sa najjeftinijim prozivodima i izracunati prosecan total_pos_feedback_count ya njih
 
+//za svaki skin_tone i skin_type i svaki produkt iz tertiary_category = tertiary_category naci brandove sa najjeftinijim prozivodima i izracunati prosecan total_pos_feedback_count ya njih
 db.feedback.aggregate([
   {
     $lookup: {
@@ -507,6 +511,11 @@ db.feedback.aggregate([
     }
   },
   {
+    $sort: {
+      min_price: -1
+    }
+  },
+  {
     $project: {
       _id: 0,
       tertiary_category: "$_id.tertiary_category",
@@ -534,30 +543,33 @@ db.feedback.aggregate([
   {
     $group: {
       _id: {
-        rating: "$rating",
+        rating_ff: "$rating",
         brand: "$product_info.brand_name"
       },
       max_price: { $max: "$product_info.price_usd" },
-      products: { $push: "$product_info" }
-    }
-  },
-  {
-    $unwind: "$products"
-  },
-  {
-    $match: {
-      $expr: {
-        $eq: ["$products.price_usd", "$max_price"]
-      }
+      products: { $addToSet: "$product_info" }
     }
   },
   {
     $project: {
       _id: 0,
-      rating: "$_id.rating",
+      rating_ff: "$_id.rating_ff",
       brand: "$_id.brand",
-      product: "$products"
+      product: {
+        $filter: {
+          input: "$products",
+          as: "p",
+          cond: { $eq: ["$$p.price_usd", "$max_price"] }
+        }
+      }
+    }
+  },
+  {
+    $unwind: "$product"
+  },
+  {
+    $sort: {
+      brand: 1
     }
   }
 ]);
-

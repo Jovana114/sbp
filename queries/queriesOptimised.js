@@ -377,29 +377,44 @@ db.product_info.aggregate([
 
 //za svaki skin_tone i skin_type i svaki produkt iz tertiary_category = tertiary_category naci brandove sa najjeftinijim prozivodima i izracunati prosecan total_pos_feedback_count ya njih
 
-db.product_info.aggregate([
+db.product_with_feedbacks.aggregate([
   {
-    $unwind: "$feedback"
+    $unwind: "$feedbacks"
+  },
+  {
+    $match: {
+      "feedbacks.skin_tone": { $ne: "" },
+      "feedbacks.skin_type": { $ne: "" }
+    }
   },
   {
     $group: {
       _id: {
-        skin_tone: "$feedback.skin_tone",
-        skin_type: "$feedback.skin_type",
-        tertiary_category: { $arrayElemAt: ["$tertiary_category", 0] }
+        tertiary_category: "$tertiary_category",
+        skin_tone: "$feedbacks.skin_tone",
+        skin_type: "$feedbacks.skin_type"
       },
       min_price: { $min: "$price_usd" },
-      avg_pos_feedback_count: { $avg: "$feedback.total_pos_feedback_count" }
+      brands: { $addToSet: "$brand_name" }
     }
   },
   {
     $sort: {
-      "_id.skin_tone": 1,
-      "_id.skin_type": 1,
-      "_id.tertiary_category": 1
+      min_price: -1
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      tertiary_category: "$_id.tertiary_category",
+      skin_tone: "$_id.skin_tone",
+      skin_type: "$_id.skin_type",
+      min_price: 1,
+      brands: 1
     }
   }
-])
+]);
+
 
 //za svaki rating iz feedback-a i za svaki brand, naci po proizvod iz svake kategorije koji ima najvecu cenu
 db.product_info.aggregate([
