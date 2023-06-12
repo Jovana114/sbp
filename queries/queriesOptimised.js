@@ -1,76 +1,160 @@
-//prvi upit
-db.product_info.aggregate([
+//Finding brand with max value_counts for every hair color, skin type and eye color
+db.product_with_feedbacks.aggregate([
   {
-    $match: {
-      "tertiary_category": "Moisturizers",
-      "feedback.is_recommended": "1.0"
-    }
-  },
-  {
-    $unwind: "$feedback"
-  },
-  {
-    $match: {
-      "feedback.is_recommended": "1.0"
-    }
+    $unwind: "$feedbacks"
   },
   {
     $group: {
       _id: {
-        skin_type: "$feedback.skin_type",
-        product_id: "$_id",
-        product_name: "$product_name",
-        brand_name: "$brand_name"
+        hair_color: "$feedbacks.hair_color",
+        skin_type: "$feedbacks.skin_type",
+        eye_color: "$feedbacks.eye_color",
+        brand_id: "$brand_id"
       },
-      count: {
-        $sum: 1
-      }
+      count: { $sum: 1 }
     }
   },
   {
     $sort: {
-      "_id.skin_type": 1,
       count: -1
     }
   },
   {
     $group: {
-      _id: "$_id.skin_type",
-      products: {
+      _id: {
+        hair_color: "$_id.hair_color",
+        skin_type: "$_id.skin_type",
+        eye_color: "$_id.eye_color"
+      },
+      max_count: { $first: "$count" },
+      brand_id: { $first: "$_id.brand_id" }
+    }
+  },
+  {
+    $sort: {
+      max_count: -1
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      hair_color: "$_id.hair_color",
+      skin_type: "$_id.skin_type",
+      eye_color: "$_id.eye_color",
+      brand_id: 1,
+      max_count: 1
+    }
+  }
+]);
+
+//Finding average rating for all feedbacks from 2022, which are recommended, for every product from tertiary_category and for every brand in it
+db.product_with_feedbacks.aggregate([
+  {
+    $unwind: "$feedbacks"
+  },
+  {
+    $lookup: {
+      from: "product_info",
+      localField: "feedbacks.product_id",
+      foreignField: "_id",
+      as: "product"
+    }
+  },
+  {
+    $unwind: "$product"
+  },
+  {
+    $match: {
+      "feedbacks.submission_time": {
+        $gte: ISODate("2022-01-01T00:00:00.000Z"),
+        $lt: ISODate("2023-01-01T00:00:00.000Z")
+      },
+      "feedbacks.is_recommended": "1.0",
+      "product.tertiary_category": { $ne: "" },
+      "product.brand_id": { $ne: "0" }
+    }
+  },
+  {
+    $group: {
+      _id: {
+        tertiaryCategory: "$product.tertiary_category",
+        brandId: "$product.brand_id",
+        brandName: "$product.brand_name"
+      },
+      avgRating: {
+        $avg: "$feedbacks.rating"
+      }
+    }
+  },
+  {
+    $group: {
+      _id: "$_id.tertiaryCategory",
+      brands: {
         $push: {
-          product_id: "$_id.product_id",
-          product_name: "$_id.product_name",
-          brand_name: "$_id.brand_name",
-          count: "$count"
+          brandId: "$_id.brandId",
+          brandName: "$_id.brandName",
+          avgRating: "$avgRating"
         }
       }
     }
   },
   {
     $project: {
-      _id: 1,
-      products: {
-        $slice: ["$products", 0, 5]
-      }
+      _id: 0,
+      tertiaryCategory: "$_id",
+      brands: 1
+    }
+  },
+  {
+    $sort: {
+      tertiaryCategory: 1
     }
   }
 ]);
 
-//drugi upit
 
-db.product_info.aggregate([
+//Finding profile of every person(skin_tone, hair_color, eye_color, skin_type) who left max number of positive feedbacks for every product from every categorie and every brand from them with limited editions 
+db.product_with_feedbacks.aggregate([
   {
-    $addFields: {
-      converted_is_recommended: {
-        $map: {
-          input: "$feedback.is_recommended",
-          as: "rec",
+    $match: {
+      limited_edition: 1 // Filter for limited edition products
+    }
+  },
+  {
+    $unwind: "$feedbacks"
+  },
+  {
+    $group: {
+      _id: {
+        product_id: "$_id",
+        brand_name: "$brand_name"
+      },
+      profiles: {
+        $push: {
+          skin_color: "$feedbacks.skin_tone",
+          skin_type: "$feedbacks.skin_type",
+          eye_color: "$feedbacks.eye_color",
+          hair_color: "$feedbacks.hair_color",
+          total_pos_feedback_count: "$feedbacks.total_pos_feedback_count"
+        }
+      }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      product_id: "$_id.product_id",
+      brand_name: "$_id.brand_name",
+      profiles: {
+        $reduce: {
+          input: "$profiles",
+          initialValue: { total_pos_feedback_count: 0 },
           in: {
-            $cond: [
-              { $ne: ["$$rec", ""] },
-              { $toDouble: "$$rec" },
-              0
-            ]
+            $cond: {
+              if: { $gt: ["$$this.total_pos_feedback_count", "$$value.total_pos_feedback_count"] },
+              then: "$$this",
+              else: "$$value"
+            }
           }
         }
       }
@@ -78,28 +162,169 @@ db.product_info.aggregate([
   },
   {
     $group: {
+      _id: "$product_id",
+      brands: {
+        $push: {
+          brand_name: "$brand_name",
+          profiles: "$profiles"
+        }
+      }
+    }
+  },
+  {
+    $sort: {
+      "_id": 1
+    }
+  },
+  {
+    $group: {
+      _id: null,
+      products: {
+        $push: {
+          product_id: "$_id",
+          brands: "$brands"
+        }
+      }
+    }
+  }
+]);
+
+//Finding brands with the cheapest products and total positive feedbacks count for every product from tertiary_category for all skin_tones and skin_types
+db.product_with_feedbacks.aggregate([
+  {
+    $match: {
+      tertiary_category: { $ne: "" },
+      skin_tone: { $ne: "" },
+      skin_type: { $ne: "" }
+    }
+  },
+  {
+    $unwind: "$feedbacks"
+  },
+  {
+    $group: {
+      _id: {
+        tertiary_category: "$tertiary_category",
+        skin_tone: "$feedbacks.skin_tone",
+        skin_type: "$feedbacks.skin_type"
+      },
+      min_price: { $min: "$price_usd" },
+      total_pos_feedback: { $sum: "$feedbacks.total_pos_feedback_count" },
+      brands: { $addToSet: "$brand_name" }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      tertiary_category: "$_id.tertiary_category",
+      skin_tone: "$_id.skin_tone",
+      skin_type: "$_id.skin_type",
+      min_price: 1,
+      total_pos_feedback: 1,
+      brands: 1
+    }
+  },
+  {
+    $sort: {
+      min_price: 1, // Sort by min_price in ascending order
+      brands: 1 // Sort by brands in ascending order
+    }
+  }
+]);
+
+//Finding products from all categories with max price for every rating from product_info
+db.product_with_feedbacks.aggregate([
+  {
+    $group: {
+      _id: {
+        rating: "$rating",
+        brand: "$brand_name"
+      },
+      max_price: { $max: "$price_usd" },
+      products: { $addToSet: "$$ROOT" }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      rating: "$_id.rating",
+      brand: "$_id.brand",
+      product: {
+        $filter: {
+          input: "$products",
+          as: "p",
+          cond: { $eq: ["$$p.price_usd", "$max_price"] }
+        }
+      }
+    }
+  },
+  {
+    $unwind: "$product"
+  },
+  {
+    $sort: {
+      brand: -1
+    }
+  }
+]);
+
+
+
+
+
+
+//Za svaki proiizvod koji ima recenziju prikazati prosečnu ocenu, minimalnu ocenu i maksimalnu ocenu koju je dobio. Takođe prikazati koliko pozitivnih i negativnih recenizija ima i koliko je puta bio preporučen
+db.product_with_feedbacks.aggregate([
+  {
+    $unwind: "$feedbacks"
+  },
+  {
+    $group: {
       _id: "$_id",
-      average_rating: { $avg: "$feedback.rating" },
       product_name: { $first: "$product_name" },
-      brand_name: { $first: "$brand_name" },
-      recommendation_count: { $sum: "$converted_is_recommended" }
+      primary_category: { $first: "$primary_category" },
+      average_rating: { $avg: { $toDouble: "$feedback.rating" } },
+      min_rating: { $min: { $toDouble: "$feedbacks.rating" } },
+      max_rating: { $max: { $toDouble: "$feedbacks.rating" } },
+      total_neg_feedback_count: { $sum: { $ifNull: ["$feedbacks.total_neg_feedback_count", 0] } },
+      total_pos_feedback_count: { $sum: { $ifNull: ["$feedbacks.total_pos_feedback_count", 0] } },
+      total_is_recommended: {
+        $sum: {
+          $cond: [
+            { $ne: ["$feedbacks.is_recommended", ""] },
+            { $toDouble: "$feedbacks.is_recommended" },
+            0
+          ]
+        }
+      }
     }
   },
   {
     $project: {
       _id: 1,
-      average_rating: { $round: ["$average_rating", 2] },
       product_name: 1,
-      brand_name: 1,
-      recommendation_count: 1
+      primary_category: 1,
+      average_rating: { $round: ["$average_rating", 2] },
+      min_rating: 1,
+      max_rating: 1,
+      total_neg_feedback_count: 1,
+      total_pos_feedback_count: 1,
+      total_is_recommended: 1
+    }
+  },
+  {
+    $sort: {
+      product_name: -1
     }
   }
 ]);
 
-//treci upit
-db.product_info.aggregate([
+
+//Za svaki brend čiji proizvodi imaju recenzije, izračunati koliko preporuka ukupno imaju njegovi proizvodi, i ukupan broj pozitivnih i negativnih recenzija za sve njegove proizvode
+
+db.product_with_feedbacks.aggregate([
   {
-    $unwind: "$feedback"
+    $unwind: "$feedbacks"
   },
   {
     $group: {
@@ -107,14 +332,14 @@ db.product_info.aggregate([
       recommendation_count: {
         $sum: {
           $cond: [
-            { $ne: ["$feedback.is_recommended", ""] },
-            { $toDouble: "$feedback.is_recommended" },
+            { $ne: ["$feedbacks.is_recommended", ""] },
+            { $toDouble: "$feedbacks.is_recommended" },
             0
           ]
         }
       },
-      total_neg_feedback_count: { $sum: "$feedback.total_neg_feedback_count" },
-      total_pos_feedback_count: { $sum: "$feedback.total_pos_feedback_count" }
+      total_neg_feedback_count: { $sum: "$feedbacks.total_neg_feedback_count" },
+      total_pos_feedback_count: { $sum: "$feedbacks.total_pos_feedback_count" }
     }
   },
   {
@@ -125,26 +350,32 @@ db.product_info.aggregate([
       total_neg_feedback_count: 1,
       total_pos_feedback_count: 1
     }
+  },
+  {
+    $sort: {
+      recommendation_count: -1
+    }
   }
 ]);
 
-//cetvrti upit
-db.product_info.aggregate([
+//Za svaki brend koji ima recenzije svojih proizvoda pronaći profil osobe koja najčešće predlaže njihove proizvode
+
+db.product_with_feedbacks.aggregate([
   {
-    $unwind: "$feedback"
+    $unwind: "$feedbacks"
   },
   {
     $match: {
-      "feedback.is_recommended": "1.0"
+      "feedbacks.is_recommended": "1.0"
     }
   },
   {
     $group: {
       _id: {
         brand_name: "$brand_name",
-        skin_tone: "$feedback.skin_tone",
-        skin_type: "$feedback.skin_type",
-        hair_color: "$feedback.hair_color"
+        skin_tone: "$feedbacks.skin_tone",
+        skin_type: "$feedbacks.skin_type",
+        hair_color: "$feedbacks.hair_color"
       },
       positive_reviews: { $sum: 1 }
     }
@@ -176,17 +407,23 @@ db.product_info.aggregate([
         $slice: ["$profiles", 0, 1]
       }
     }
+  },
+  {
+    $sort: {
+      brand_name: 1
+    }
   }
 ]);
 
-//peti upit
-db.product_info.aggregate([
+//Pronaći najbolje ocenjen proizvod za svaki brend na osnovu prosečne ocene i ukupnog broja preporuka korisnika u recenzijama
+
+db.product_with_feedbacks.aggregate([
   {
-    $unwind: "$feedback"
+    $unwind: "$feedbacks"
   },
   {
     $match: {
-      "feedback.is_recommended": "1.0",
+      "feedbacks.is_recommended": "1.0",
       brand_name: { $ne: "" }
     }
   },
@@ -201,7 +438,7 @@ db.product_info.aggregate([
         tertiaryCategory: "$tertiary_category"
       },
       avgRating: {
-        $avg: { $toDouble: "$feedback.rating" }
+        $avg: { $toDouble: "$feedbacks.rating" }
       },
       totalRecommendations: { $sum: 1 }
     }
@@ -235,223 +472,70 @@ db.product_info.aggregate([
       brandName: "$_id",
       topProduct: 1
     }
-  }
-]);
-
-//for every hair color and for every skin type and every eye color find brand with max value_counts
-db.product_info.aggregate([
-  {
-    $unwind: "$feedback"
-  },
-  {
-    $group: {
-      _id: {
-        hair_color: "$feedback.hair_color",
-        skin_type: "$feedback.skin_type",
-        eye_color: "$feedback.eye_color",
-        brand_id: "$brand_id",
-        brand_name: "$brand_name"
-      },
-      count: { $sum: 1 }
-    }
   },
   {
     $sort: {
-      "_id.hair_color": 1,
-      "_id.skin_type": 1,
-      "_id.eye_color": 1,
-      count: -1
-    }
-  },
-  {
-    $group: {
-      _id: {
-        hair_color: "$_id.hair_color",
-        skin_type: "$_id.skin_type",
-        eye_color: "$_id.eye_color"
-      },
-      max_count: { $first: "$count" },
-      brand_id: { $first: "$_id.brand_id" },
-      brand_name: { $first: "$_id.brand_name" }
-    }
-  },
-  {
-    $project: {
-      _id: 0,
-      hair_color: "$_id.hair_color",
-      skin_type: "$_id.skin_type",
-      eye_color: "$_id.eye_color",
-      brand_id: 1,
-      brand_name: 1,
-      max_count: 1
+      brandName: 1
     }
   }
-])
+]);
 
-//for all feedbacks in 2022, where "is_recommended" : "1.0", for every product from tertiary_category and for every brand in it find  average rating 
-db.product_info.aggregate([
-  {
-    $unwind: "$feedback"
-  },
-  {
-    $match: {
-      "feedback.is_recommended": "1.0",
-      "feedback.submission_time": {
-        $gte: ISODate("2022-01-01T00:00:00.000Z"),
-        $lt: ISODate("2023-01-01T00:00:00.000Z")
-      }
-    }
-  },
-  {
-    $group: {
-      _id: {
-        tertiary_category: "$tertiary_category",
-        brand_name: "$brand_name"
-      },
-      average_rating: { $avg: "$feedback.rating" }
-    }
-  },
-  {
-    $project: {
-      _id: 0,
-      tertiary_category: "$_id.tertiary_category",
-      brand_name: "$_id.brand_name",
-      average_rating: 1
-    }
-  }
-])
-
-//za svaki produkt iz sve tri kategorije i svaki brend u okviru njih koji ima limited_edition naci profil svake osobe (kombinacija boje kože, tipa kože, boje očiju i boje kose) koji je ostavila najvise total_pos_feedback_count
-
-db.product_info.aggregate([
-  {
-    $match: {
-      limited_edition: 1
-    }
-  },
-  {
-    $unwind: "$feedback"
-  },
-  {
-    $group: {
-      _id: {
-        tertiary_category: "$tertiary_category",
-        brand_name: "$brand_name",
-        product_id: "$product_id",
-        skin_tone: "$feedback.skin_tone",
-        skin_type: "$feedback.skin_type",
-        eye_color: "$feedback.eye_color",
-        hair_color: "$feedback.hair_color"
-      },
-      max_pos_feedback: { $max: "$feedback.total_pos_feedback_count" }
-    }
-  },
-  {
-    $group: {
-      _id: {
-        tertiary_category: "$_id.tertiary_category",
-        brand_name: "$_id.brand_name",
-        product_id: "$_id.product_id"
-      },
-      top_feedbacks: {
-        $push: {
-          skin_tone: "$_id.skin_tone",
-          skin_type: "$_id.skin_type",
-          eye_color: "$_id.eye_color",
-          hair_color: "$_id.hair_color",
-          total_pos_feedback_count: "$max_pos_feedback"
-        }
-      }
-    }
-  },
-  {
-    $project: {
-      _id: 0,
-      tertiary_category: "$_id.tertiary_category",
-      brand_name: "$_id.brand_name",
-      product_id: "$_id.product_id",
-      top_feedbacks: 1
-    }
-  }
-])
-
-//za svaki skin_tone i skin_type i svaki produkt iz tertiary_category = tertiary_category naci brandove sa najjeftinijim prozivodima i izracunati prosecan total_pos_feedback_count ya njih
+//Za svaki tip kože korisnika u bazi (dry, combination, sensetive, normal) pronaći po 2 proizvoda koja spadaju u "Moisturizers" kategoriju (tertiary_category) a koja su ljudi sa tim tipom kože najviše preporučivali u recenzijama 
 
 db.product_with_feedbacks.aggregate([
+  {
+    $match: {
+      "tertiary_category": "Moisturizers",
+      "feedbacks.is_recommended": "1.0"
+    }
+  },
   {
     $unwind: "$feedbacks"
   },
   {
     $match: {
-      "feedbacks.skin_tone": { $ne: "" },
-      "feedbacks.skin_type": { $ne: "" }
+      "feedbacks.is_recommended": "1.0"
     }
   },
   {
     $group: {
       _id: {
-        tertiary_category: "$tertiary_category",
-        skin_tone: "$feedbacks.skin_tone",
-        skin_type: "$feedbacks.skin_type"
-      },
-      min_price: { $min: "$price_usd" },
-      brands: { $addToSet: "$brand_name" }
-    }
-  },
-  {
-    $sort: {
-      min_price: -1
-    }
-  },
-  {
-    $project: {
-      _id: 0,
-      tertiary_category: "$_id.tertiary_category",
-      skin_tone: "$_id.skin_tone",
-      skin_type: "$_id.skin_type",
-      min_price: 1,
-      brands: 1
-    }
-  }
-]);
-
-
-//za svaki rating iz feedback-a i za svaki brand, naci po proizvod iz svake kategorije koji ima najvecu cenu
-db.product_info.aggregate([
-  {
-    $unwind: "$feedback"
-  },
-  {
-    $group: {
-      _id: {
-        rating: "$feedback.rating",
+        skin_type: "$feedbacks.skin_type",
+        product_id: "$_id",
+        product_name: "$product_name",
         brand_name: "$brand_name"
       },
-      max_price: { $max: "$price_usd" }
+      count: {
+        $sum: 1
+      }
     }
   },
   {
     $sort: {
-      "_id.rating": 1,
-      "_id.brand_name": 1
+      "_id.skin_type": 1,
+      count: -1
     }
   },
   {
     $group: {
-      _id: "$_id.rating",
-      highest_priced_products: {
+      _id: "$_id.skin_type",
+      products: {
         $push: {
+          product_id: "$_id.product_id",
+          product_name: "$_id.product_name",
           brand_name: "$_id.brand_name",
-          max_price: "$max_price"
+          count: "$count"
         }
       }
     }
   },
   {
     $project: {
-      _id: 0,
-      rating: "$_id",
-      highest_priced_products: 1
+      _id: 1,
+      products: {
+        $slice: ["$products", 0, 2]
+      }
     }
   }
-])
+  
+]);

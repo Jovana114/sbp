@@ -1,7 +1,5 @@
 db.product_info.createIndex({ "feedback.is_recommended": 1 });
 db.product_info.createIndex({ "brand_name": 1 });
-db.product_info.createIndex({ "product_name": 1 });
-db.product_info.createIndex({ "brand_id": 1 });
 db.product_info.createIndex({ "_id": 1 });
 db.product_info.createIndex({ "feedback.rating": 1 });
 db.product_info.createIndex({

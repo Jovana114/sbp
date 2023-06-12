@@ -1,272 +1,4 @@
-//prvi upit
- db.feedback.aggregate([
-  {
-    $lookup: {
-      from: "product_info",
-      localField: "product_id",
-      foreignField: "_id",
-      as: "product_info"
-    }
-  },
-  {
-    $unwind: "$product_info"
-  },
-  {
-    $match: {
-      "product_info.secondary_category": "Moisturizers",
-      is_recommended: "1.0"
-    }
-  },
-  {
-    $group: {
-      _id: {
-        skin_type: "$skin_type",
-        product_id: "$product_id",
-        product_name: "$product_info.product_name",
-        brand_name: "$product_info.brand_name"
-      },
-      count: {
-        $sum: 1
-      }
-    }
-  },
-  {
-    $sort: {
-      "_id.skin_type": 1,
-      count: -1
-    }
-  },
-  {
-    $group: {
-      _id: "$_id.skin_type",
-      products: {
-        $push: {
-          product_id: "$_id.product_id",
-          product_name: "$_id.product_name",
-          brand_name: "$_id.brand_name",
-          count: "$count"
-        }
-      }
-    }
-  },
-  {
-    $project: {
-      _id: 1,
-      products: {
-        $slice: ["$products", 0, 5]
-      }
-    }
-  }
-]);
-
-//drugi upit
-db.feedback.aggregate([
-  {
-    $lookup: {
-      from: "product_info",
-      localField: "product_id",
-      foreignField: "_id",
-      as: "product_info"
-    }
-  },
-  {
-    $unwind: "$product_info"
-  },
-  {
-    $group: {
-      _id: "$product_id",
-      average_rating: { $avg: "$rating" },
-      product_name: { $first: "$product_info.product_name" },
-      brand_name: { $first: "$product_info.brand_name" },
-      recommendation_count: {
-        $sum: {
-          $cond: [
-            { $ne: ["$is_recommended", ""] },
-            { $toDouble: "$is_recommended" },
-            0
-          ]
-        }
-      }
-    }
-  },
-  {
-    $project: {
-      _id: 1,
-      average_rating: { $round: ["$average_rating", 2] },
-      product_name: 1,
-      brand_name: 1,
-      recommendation_count: 1
-    }
-  }
-]);
-
-//treci upit
-db.feedback.aggregate([
-  {
-    $lookup: {
-      from: "product_info",
-      localField: "product_id",
-      foreignField: "_id",
-      as: "product_info"
-    }
-  },
-  {
-    $unwind: "$product_info"
-  },
-  {
-    $group: {
-      _id: "$product_info.brand_name",
-      recommendation_count: {
-        $sum: {
-          $cond: [
-            { $ne: ["$is_recommended", ""] },
-            { $toDouble: "$is_recommended" },
-            0
-          ]
-        }
-      },
-      total_neg_feedback_count: { $sum: "$total_neg_feedback_count" },
-      total_pos_feedback_count: { $sum: "$total_pos_feedback_count" }
-    }
-  },
-  {
-    $project: {
-      _id: 0,
-      brand_name: "$_id",
-      recommendation_count: 1,
-      total_neg_feedback_count: 1,
-      total_pos_feedback_count: 1
-    }
-  }
-]);
-
-//cetvrti upit
-db.feedback.aggregate([
-  {
-    $lookup: {
-      from: "product_info",
-      localField: "product_id",
-      foreignField: "_id",
-      as: "product_info"
-    }
-  },
-  {
-    $unwind: "$product_info"
-  },
-  {
-    $match: {
-      is_recommended: "1.0"
-    }
-  },
-  {
-    $group: {
-      _id: {
-        brand_name: "$product_info.brand_name",
-        skin_tone: "$skin_tone",
-        skin_type: "$skin_type",
-        hair_color: "$hair_color"
-      },
-      positive_reviews: { $sum: 1 }
-    }
-  },
-  {
-    $sort: {
-      "_id.brand_name": 1,
-      positive_reviews: -1
-    }
-  },
-  {
-    $group: {
-      _id: "$_id.brand_name",
-      profiles: {
-        $push: {
-          skin_tone: "$_id.skin_tone",
-          skin_type: "$_id.skin_type",
-          hair_color: "$_id.hair_color",
-          positive_reviews: "$positive_reviews"
-        }
-      }
-    }
-  },
-  {
-    $project: {
-      _id: 0,
-      brand_name: "$_id",
-      profiles: {
-        $slice: ["$profiles", 0, 1]
-      }
-    }
-  }
-]);
-
-//peti upit
-db.feedback.aggregate([
-  {
-    $lookup: {
-      from: "product_info",
-      localField: "product_id",
-      foreignField: "_id",
-      as: "product_info"
-    }
-  },
-  {
-    $unwind: "$product_info"
-  },
-  {
-    $match: {
-      is_recommended: "1.0",
-      "product_info.brand_name": { $ne: "" }
-    }
-  },
-  {
-    $group: {
-      _id: {
-        brandName: "$product_info.brand_name",
-        productId: "$product_info._id",
-        productName: "$product_info.product_name",
-        primaryCategory: "$product_info.primary_category",
-        secondaryCategory: "$product_info.secondary_category",
-        tertiaryCategory: "$product_info.tertiary_category"
-      },
-      avgRating: {
-        $avg: { $toDouble: "$rating" }  // Calculate the average rating using $avg and $toDouble
-      },
-      totalRecommendations: { $sum: 1 }  // Count the number of recommendations
-    }
-  },
-  {
-    $sort: {
-      "_id.brandName": 1,
-      avgRating: -1,  // Sort by average rating in descending order
-      totalRecommendations: -1  // Sort by total recommendations in descending order
-    }
-  },
-  {
-    $group: {
-      _id: "$_id.brandName",
-      topProduct: {
-        $first: {
-          productId: "$_id.productId",
-          productName: "$_id.productName",
-          primaryCategory: "$_id.primaryCategory",
-          secondaryCategory: "$_id.secondaryCategory",
-          tertiaryCategory: "$_id.tertiaryCategory",
-          avgRating: { $divide: [ { $round: ["$avgRating", 1] }, 1 ] },  // Round average rating to 1 decimal place
-          totalRecommendations: "$totalRecommendations"
-        }
-      }
-    }
-  },
-  {
-    $project: {
-      _id: 0,
-      brandName: "$_id",
-      topProduct: 1
-    }
-  }
-]);
-
-//for every hair color and for every skin type and every eye color find brand with max value_counts
+//Finding brand with max value_counts for every hair color, skin type and eye color
 db.feedback.aggregate([
   {
     $lookup: {
@@ -327,7 +59,7 @@ db.feedback.aggregate([
   }
 ]);
 
-//for all feedbacks in 2022, where "is_recommended" : "1.0", for every product from tertiary_category and for every brand in it find  average rating 
+//Finding average rating for all feedbacks from 2022, which are recommended, for every product from tertiary_category and for every brand in it
 db.feedback.aggregate([
   {
     $match: {
@@ -394,11 +126,11 @@ db.feedback.aggregate([
 ]);
 
 
-//za svaki produkt iz sve tri kategorije i svaki brend u okviru njih koji ima limited_edition naci profil svake osobe (kombinacija boje kože, tipa kože, boje očiju i boje kose) koji je ostavila najvise total_pos_feedback_count
+//Finding profile of every person(hair_color, eye_color, skin_type) who left max number of positive feedbacks for every product from every categorie and every brand from them with limited editions 
 db.product_info.aggregate([
   {
     $match: {
-      limited_edition: 1 // Filter for limited edition products
+      limited_edition: 1
     }
   },
   {
@@ -461,6 +193,11 @@ db.product_info.aggregate([
     }
   },
   {
+    $sort: {
+      "_id": 1
+    }
+  },
+  {
     $group: {
       _id: null,
       products: {
@@ -470,16 +207,10 @@ db.product_info.aggregate([
         }
       }
     }
-  },
-  {
-    $sort: {
-      "products.product_id": 1
-    }
   }
 ]);
 
-
-//za svaki skin_tone i skin_type i svaki produkt iz tertiary_category = tertiary_category naci brandove sa najjeftinijim prozivodima i izracunati prosecan total_pos_feedback_count ya njih
+//Finding brands with the cheapest products and total positive feedbacks count for every product from tertiary_category for all skin_tones and skin_types
 db.feedback.aggregate([
   {
     $lookup: {
@@ -511,11 +242,6 @@ db.feedback.aggregate([
     }
   },
   {
-    $sort: {
-      min_price: -1
-    }
-  },
-  {
     $project: {
       _id: 0,
       tertiary_category: "$_id.tertiary_category",
@@ -524,10 +250,18 @@ db.feedback.aggregate([
       min_price: 1,
       brands: 1
     }
+  },
+  {
+    $sort: {
+      min_price: 1,
+      brands: 1
+    }
   }
 ]);
 
-//za svaki rating iz feedback-a i za svaki brand, naci po proizvod iz svake kategorije koji ima najvecu cenu
+
+
+//Finding products from all categories with max price for every rating from product_info
 db.feedback.aggregate([
   {
     $lookup: {
@@ -543,7 +277,7 @@ db.feedback.aggregate([
   {
     $group: {
       _id: {
-        rating_ff: "$rating",
+        rating: "$product_info.rating",
         brand: "$product_info.brand_name"
       },
       max_price: { $max: "$product_info.price_usd" },
@@ -553,7 +287,7 @@ db.feedback.aggregate([
   {
     $project: {
       _id: 0,
-      rating_ff: "$_id.rating_ff",
+      rating: "$_id.rating",
       brand: "$_id.brand",
       product: {
         $filter: {
@@ -569,7 +303,7 @@ db.feedback.aggregate([
   },
   {
     $sort: {
-      brand: 1
+      brand: -1
     }
   }
 ]);
