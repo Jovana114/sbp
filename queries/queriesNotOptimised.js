@@ -509,16 +509,16 @@ db.feedback.aggregate([
         tertiaryCategory: "$product_info.tertiary_category"
       },
       avgRating: {
-        $avg: { $toDouble: "$rating" }  // Calculate the average rating using $avg and $toDouble
+        $avg: { $toDouble: "$rating" }  
       },
-      totalRecommendations: { $sum: 1 }  // Count the number of recommendations
+      totalRecommendations: { $sum: 1 }  
     }
   },
   {
     $sort: {
       "_id.brandName": 1,
-      avgRating: -1,  // Sort by average rating in descending order
-      totalRecommendations: -1  // Sort by total recommendations in descending order
+      avgRating: -1,  
+      totalRecommendations: -1  
     }
   },
   {
@@ -531,7 +531,7 @@ db.feedback.aggregate([
           primaryCategory: "$_id.primaryCategory",
           secondaryCategory: "$_id.secondaryCategory",
           tertiaryCategory: "$_id.tertiaryCategory",
-          avgRating: { $divide: [ { $round: ["$avgRating", 1] }, 1 ] },  // Round average rating to 1 decimal place
+          avgRating: { $round: ["$avgRating", 1] },  
           totalRecommendations: "$totalRecommendations"
         }
       }
