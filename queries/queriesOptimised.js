@@ -1,4 +1,4 @@
-//Finding brand with max value_counts for every hair color, skin type and eye color
+//Finding brand with max feedback count for every hair color, skin type and eye color
 db.product_with_feedbacks.aggregate([
   {
     $unwind: "$feedbacks"
@@ -53,33 +53,22 @@ db.product_with_feedbacks.aggregate([
     $unwind: "$feedbacks"
   },
   {
-    $lookup: {
-      from: "product_info",
-      localField: "feedbacks.product_id",
-      foreignField: "_id",
-      as: "product"
-    }
-  },
-  {
-    $unwind: "$product"
-  },
-  {
     $match: {
       "feedbacks.submission_time": {
         $gte: ISODate("2022-01-01T00:00:00.000Z"),
         $lt: ISODate("2023-01-01T00:00:00.000Z")
       },
       "feedbacks.is_recommended": "1.0",
-      "product.tertiary_category": { $ne: "" },
-      "product.brand_id": { $ne: "0" }
+      "tertiary_category": { $ne: "" },
+      "brand_id": { $ne: "0" }
     }
   },
   {
     $group: {
       _id: {
-        tertiaryCategory: "$product.tertiary_category",
-        brandId: "$product.brand_id",
-        brandName: "$product.brand_name"
+        tertiaryCategory: "$tertiary_category",
+        brandId: "$brand_id",
+        brandName: "$brand_name"
       },
       avgRating: {
         $avg: "$feedbacks.rating"
@@ -117,7 +106,7 @@ db.product_with_feedbacks.aggregate([
 db.product_with_feedbacks.aggregate([
   {
     $match: {
-      limited_edition: 1 // Filter for limited edition products
+      limited_edition: 1
     }
   },
   {
@@ -226,8 +215,8 @@ db.product_with_feedbacks.aggregate([
   },
   {
     $sort: {
-      min_price: 1, // Sort by min_price in ascending order
-      brands: 1 // Sort by brands in ascending order
+      min_price: 1,
+      brands: 1
     }
   }
 ]);
@@ -339,8 +328,7 @@ db.product_with_feedbacks.aggregate([
         }
       },
       total_neg_feedback_count: { $sum: "$feedbacks.total_neg_feedback_count" },
-      total_pos_feedback_count: { $sum: "$feedbacks.total_pos_feedback_count" },
-      average_rating: { $avg: { $toDouble: "$feedbacks.rating" } },
+      total_pos_feedback_count: { $sum: "$feedbacks.total_pos_feedback_count" }
     }
   },
   {
@@ -349,8 +337,7 @@ db.product_with_feedbacks.aggregate([
       brand_name: "$_id",
       recommendation_count: 1,
       total_neg_feedback_count: 1,
-      total_pos_feedback_count: 1,
-      average_rating : 1
+      total_pos_feedback_count: 1
     }
   },
   {
@@ -462,7 +449,7 @@ db.product_with_feedbacks.aggregate([
           primaryCategory: "$_id.primaryCategory",
           secondaryCategory: "$_id.secondaryCategory",
           tertiaryCategory: "$_id.tertiaryCategory",
-          avgRating: { $round: ["$avgRating", 1] },
+          avgRating: { $divide: [{ $round: ["$avgRating", 1] }, 1] },
           totalRecommendations: "$totalRecommendations"
         }
       }
