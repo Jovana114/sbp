@@ -449,7 +449,7 @@ db.product_with_feedbacks.aggregate([
           primaryCategory: "$_id.primaryCategory",
           secondaryCategory: "$_id.secondaryCategory",
           tertiaryCategory: "$_id.tertiaryCategory",
-          avgRating: { $divide: [{ $round: ["$avgRating", 1] }, 1] },
+          avgRating: { $round: ["$avgRating", 1] },
           totalRecommendations: "$totalRecommendations"
         }
       }
