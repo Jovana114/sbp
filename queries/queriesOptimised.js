@@ -339,7 +339,8 @@ db.product_with_feedbacks.aggregate([
         }
       },
       total_neg_feedback_count: { $sum: "$feedbacks.total_neg_feedback_count" },
-      total_pos_feedback_count: { $sum: "$feedbacks.total_pos_feedback_count" }
+      total_pos_feedback_count: { $sum: "$feedbacks.total_pos_feedback_count" },
+      average_rating: { $avg: { $toDouble: "$feedbacks.rating" } },
     }
   },
   {
@@ -348,7 +349,8 @@ db.product_with_feedbacks.aggregate([
       brand_name: "$_id",
       recommendation_count: 1,
       total_neg_feedback_count: 1,
-      total_pos_feedback_count: 1
+      total_pos_feedback_count: 1,
+      average_rating : 1
     }
   },
   {
@@ -460,7 +462,7 @@ db.product_with_feedbacks.aggregate([
           primaryCategory: "$_id.primaryCategory",
           secondaryCategory: "$_id.secondaryCategory",
           tertiaryCategory: "$_id.tertiaryCategory",
-          avgRating: { $divide: [{ $round: ["$avgRating", 1] }, 1] },
+          avgRating: { $round: ["$avgRating", 1] },
           totalRecommendations: "$totalRecommendations"
         }
       }

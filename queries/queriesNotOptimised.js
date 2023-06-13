@@ -392,7 +392,8 @@ db.feedback.aggregate([
         }
       },
       total_neg_feedback_count: { $sum: "$total_neg_feedback_count" },
-      total_pos_feedback_count: { $sum: "$total_pos_feedback_count" }
+      total_pos_feedback_count: { $sum: "$total_pos_feedback_count" },
+      average_rating: { $avg: "$rating" }
     }
   },
   {
@@ -401,7 +402,8 @@ db.feedback.aggregate([
       brand_name: "$_id",
       recommendation_count: 1,
       total_neg_feedback_count: 1,
-      total_pos_feedback_count: 1
+      total_pos_feedback_count: 1,
+      average_rating: 1
     }
   },
   {
